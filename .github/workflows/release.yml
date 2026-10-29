@@ -1,0 +1,19 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ADDON: MustDo
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the addon zip (the folder players drop into Interface/AddOns; dev tools left out)
+        run: zip -r "${ADDON}-${GITHUB_REF_NAME}.zip" "${ADDON}" -x "${ADDON}/tools/*"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" "${ADDON}-${GITHUB_REF_NAME}.zip" --title "${ADDON} ${GITHUB_REF_NAME}" --generate-notes

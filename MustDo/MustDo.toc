@@ -1,0 +1,20 @@
+## Interface: 16001, 11508
+## Title: Must Do
+## Notes: Flags quest chains that end in a great reward, so you don't abandon them. /mustdo
+## Version: 1.0
+## SavedVariables: MustDoDB
+## SavedVariablesPerCharacter: MustDoCharDB
+## OptionalDeps: GearQuestForever, TomTom
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\HereBeDragons\HereBeDragons-2.0.lua
+Libs\HereBeDragons\HereBeDragons-Pins-2.0.lua
+Data.lua
+Core.lua
+Zones.lua
+Rewards.lua
+Hooks.lua
+Pins.lua
+Npc.lua
+List.lua
