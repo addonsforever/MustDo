@@ -1,7 +1,7 @@
 ## Interface: 16001, 11508
 ## Title: Must Do
 ## Notes: Flags quest chains that end in a great reward, so you don't abandon them. /mustdo
-## Version: 1.0
+## Version: 1.0.0
 ## SavedVariables: MustDoDB
 ## SavedVariablesPerCharacter: MustDoCharDB
 ## OptionalDeps: GearQuestForever, TomTom
