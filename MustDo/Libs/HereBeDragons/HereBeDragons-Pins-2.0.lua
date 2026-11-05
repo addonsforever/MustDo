@@ -419,7 +419,9 @@ function worldmapProvider:HandlePin(icon, data)
     if not uiMapID then return end
 
     -- Questie modification
-    if (Questie.db.profile.hideIconsOnContinents == true) and (HBD.mapData[uiMapID].mapType == Enum.UIMapType.Continent or uiMapID == 947) or (uiMapID ~= data.uiMapID and data.worldMapShowFlag == HBD_PINS_WORLDMAP_SHOW_CURRENT) then
+    -- Must Do: Questie may not be installed, so read its setting only when it exists.
+    local hideOnContinents = Questie and Questie.db and Questie.db.profile and Questie.db.profile.hideIconsOnContinents == true
+    if hideOnContinents and (HBD.mapData[uiMapID].mapType == Enum.UIMapType.Continent or uiMapID == 947) or (uiMapID ~= data.uiMapID and data.worldMapShowFlag == HBD_PINS_WORLDMAP_SHOW_CURRENT) then
         icon:Hide();
         return;
     elseif(uiMapID == data.uiMapID and data.worldMapShowFlag == HBD_PINS_WORLDMAP_SHOW_CURRENT) then
