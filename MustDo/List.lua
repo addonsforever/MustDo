@@ -85,11 +85,14 @@ local function GetRow(i)
   row.quest = line(QUEST_SIZE)
   row.action = line(ACTION_SIZE)
   row.leads = line(LEADS_SIZE)
-  -- Left-click: waypoint to the quest giver. Right-click: the quests on Wowhead.
+  -- Left-click: waypoint to the quest giver. Shift-click: link the quest in chat.
+  -- Right-click: the quests on Wowhead.
   row:RegisterForClicks("AnyUp")
   row:SetScript("OnClick", function(self, button)
     MD.Safe(function()
-      if button == "RightButton" then
+      if button == "LeftButton" and IsShiftKeyDown() then
+        MD.InsertLink(self.stepId and MD:QuestLink(self.stepId))
+      elseif button == "RightButton" then
         if self.stepId then MD:OpenQuestLinks(self.stepId, self.finalId) end
       elseif self.giver and SetWaypoint(self.giver, self.stepName) then
         DEFAULT_CHAT_FRAME:AddMessage("|cffffcc19Must Do:|r waypoint set to " .. self.giver[1])
@@ -487,6 +490,7 @@ local function CreateWindow()
     GameTooltip:AddLine("Profession quests and rewards only show for professions you have.", 0.8, 0.8, 0.8, true)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Click a row: waypoint to the quest giver", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Shift-click a row: link the quest in chat", 0.8, 0.8, 0.8)
     GameTooltip:AddLine("Right-click a row: Wowhead links", 0.8, 0.8, 0.8)
     GameTooltip:AddLine("Hover the icon: the rewards", 0.8, 0.8, 0.8)
     GameTooltip:AddLine("x (on hover): hide it", 0.8, 0.8, 0.8)

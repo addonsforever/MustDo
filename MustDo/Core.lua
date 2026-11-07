@@ -60,11 +60,77 @@ local function KnownProfessions()
   end)
   return known
 end
-function MD:ResetProfessions() known = nil end
+function MD:ResetProfessions() known = nil if MD.ResetTiers then MD:ResetTiers() end end
 function MD.HasProfession(id) return not id or id == 0 or KnownProfessions()[id] == true end
 
--- A reward you can't use because it needs a profession you don't have.
-local function Unusable(r) return not MD.HasProfession(r[6]) end
+-- Weapon and armor types each class can learn in Classic (item class 2 = weapon, 4 = armor,
+-- by subclass). Types missing here (misc, fishing poles, cloth) anyone can use. Mail and plate
+-- count from level 1 for the classes that learn them at 40, so a long chain still shows.
+local W = { AXE1 = 0, AXE2 = 1, BOW = 2, GUN = 3, MACE1 = 4, MACE2 = 5, POLEARM = 6, SWORD1 = 7, SWORD2 = 8,
+  STAFF = 10, FIST = 13, DAGGER = 15, THROWN = 16, XBOW = 18, WAND = 19 }
+local A = { LEATHER = 2, MAIL = 3, PLATE = 4, SHIELD = 6, LIBRAM = 7, IDOL = 8, TOTEM = 9 }
+local GATED_WEAPONS, GATED_ARMOR = {}, { [A.LEATHER] = true, [A.MAIL] = true, [A.PLATE] = true,
+  [A.SHIELD] = true, [A.LIBRAM] = true, [A.IDOL] = true, [A.TOTEM] = true }
+for _, sub in pairs(W) do GATED_WEAPONS[sub] = true end
+local function Set(...) local t = {} for _, v in ipairs({ ... }) do t[v] = true end return t end
+local PROFICIENCY = {
+  WARRIOR = { w = Set(W.AXE1, W.AXE2, W.BOW, W.GUN, W.MACE1, W.MACE2, W.POLEARM, W.SWORD1, W.SWORD2, W.STAFF, W.FIST, W.DAGGER, W.THROWN, W.XBOW),
+              a = Set(A.LEATHER, A.MAIL, A.PLATE, A.SHIELD) },
+  PALADIN = { w = Set(W.AXE1, W.AXE2, W.MACE1, W.MACE2, W.POLEARM, W.SWORD1, W.SWORD2),
+              a = Set(A.LEATHER, A.MAIL, A.PLATE, A.SHIELD, A.LIBRAM) },
+  HUNTER  = { w = Set(W.AXE1, W.AXE2, W.BOW, W.GUN, W.POLEARM, W.SWORD1, W.SWORD2, W.STAFF, W.FIST, W.DAGGER, W.THROWN, W.XBOW),
+              a = Set(A.LEATHER, A.MAIL) },
+  ROGUE   = { w = Set(W.BOW, W.GUN, W.MACE1, W.SWORD1, W.FIST, W.DAGGER, W.THROWN, W.XBOW), a = Set(A.LEATHER) },
+  PRIEST  = { w = Set(W.MACE1, W.STAFF, W.DAGGER, W.WAND), a = Set() },
+  SHAMAN  = { w = Set(W.AXE1, W.AXE2, W.MACE1, W.MACE2, W.STAFF, W.FIST, W.DAGGER),
+              a = Set(A.LEATHER, A.MAIL, A.SHIELD, A.TOTEM) },
+  MAGE    = { w = Set(W.SWORD1, W.STAFF, W.DAGGER, W.WAND), a = Set() },
+  WARLOCK = { w = Set(W.SWORD1, W.STAFF, W.DAGGER, W.WAND), a = Set() },
+  DRUID   = { w = Set(W.MACE1, W.MACE2, W.STAFF, W.FIST, W.DAGGER), a = Set(A.LEATHER, A.IDOL) },
+}
+
+-- True when your class can never use this weapon or armor type. Unknown class or item: usable.
+local function WrongClass(itemId)
+  if not itemId or itemId <= 0 then return false end
+  local prof = PROFICIENCY[select(2, UnitClass("player")) or ""]
+  local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if not prof or not getInstant then return false end
+  local ok, _, _, _, _, _, classID, subclassID = pcall(getInstant, itemId)
+  if not ok then return false end
+  if classID == 2 and GATED_WEAPONS[subclassID] then return not prof.w[subclassID] end
+  if classID == 4 and GATED_ARMOR[subclassID] then return not prof.a[subclassID] end
+  return false
+end
+MD.WrongClass = WrongClass
+
+-- The armor each class wants: cloth for casters, leather for druids and rogues, and so on
+-- (hunters and shamans move to mail, warriors and paladins to plate, at 40).
+local function MainArmor()
+  local class, level = select(2, UnitClass("player")), UnitLevel("player") or 1
+  if class == "WARRIOR" or class == "PALADIN" then return level >= 40 and A.PLATE or A.MAIL end
+  if class == "HUNTER" or class == "SHAMAN" then return level >= 40 and A.MAIL or A.LEATHER end
+  if class == "DRUID" or class == "ROGUE" then return A.LEATHER end
+  return 1 -- cloth
+end
+
+-- +1 for your class's main armor type, -1 for lighter body armor you'd skip, 0 otherwise
+-- (weapons, jewelry, cloaks, shields, unknown items).
+local BODY_ARMOR = { [1] = true, [A.LEATHER] = true, [A.MAIL] = true, [A.PLATE] = true }
+local function ArmorFit(itemId)
+  local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if not itemId or itemId <= 0 or not getInstant then return 0 end
+  local ok, _, _, _, equipLoc, _, classID, subclassID = pcall(getInstant, itemId)
+  if not ok or classID ~= 4 or not BODY_ARMOR[subclassID] or equipLoc == "INVTYPE_CLOAK" then return 0 end
+  local main = MainArmor()
+  if subclassID == main then return 1 end
+  if subclassID < main then return -1 end
+  return 0
+end
+MD.ArmorFit = ArmorFit
+
+-- A reward you can't use: it needs a profession you don't have, or it's a weapon or armor
+-- type your class can't use.
+local function Unusable(r) return not MD.HasProfession(r[6]) or WrongClass(r[1]) end
 MD.Unusable = Unusable
 
 -- Field positions in ns.Q rows and ns.chains rows (see Data.lua).
@@ -199,10 +265,10 @@ end
 -- doesn't make it an upgrade at 19.)
 local function IsPick(reward)
   if Unusable(reward) then return false end
-  -- Green upgrades are off unless you turn them on ("Green upgrades" in the list).
-  if not MustDoDB.greenPicks and ((MD.GameQuality and MD.GameQuality(reward[1])) or reward[3]) <= 2 then return false end
   local ranges = TopPicks()[reward[1]]
   if not ranges then return false end
+  -- Green upgrades are off unless you turn them on ("Green upgrades" in the list).
+  if not MustDoDB.greenPicks and ((MD.GameQuality and MD.GameQuality(reward[1])) or reward[3]) <= 2 then return false end
   local level = math.max(UnitLevel("player") or 1, reward[4] or 0)
   for _, r in ipairs(ranges) do
     if level >= r[1] and level <= r[2] then return true end
@@ -211,7 +277,7 @@ local function IsPick(reward)
 end
 MD.IsPick = IsPick
 
-function MD:ResetTopPicks() topPicks = nil end
+function MD:ResetTopPicks() topPicks = nil if MD.ResetTiers then MD:ResetTiers() end end
 
 -- Gear check ----------------------------------------------------------------------------
 -- The data's item quality can be wrong (Forever changed some items), so the game's own quality
@@ -228,6 +294,11 @@ local SLOTS = {
   INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_THROWN = { 18 }, INVTYPE_RELIC = { 18 },
 }
 
+-- Items Must Do asked the game about that weren't loaded yet. Asking makes the game fetch them;
+-- only their arrival (GET_ITEM_INFO_RECEIVED) is worth a refresh.
+local pendingItems = {}
+MD.pendingItems = pendingItems
+
 local function ItemLevel(item)
   local fn = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
   if fn then
@@ -235,6 +306,7 @@ local function ItemLevel(item)
     if ok and level then return level end
   end
   local _, _, _, level = (C_Item and C_Item.GetItemInfo or GetItemInfo)(item)
+  if not level and type(item) == "number" then pendingItems[item] = true end
   return level
 end
 
@@ -244,6 +316,7 @@ local function GameQuality(itemId)
     if q then return q end
   end
   local _, _, q = (C_Item and C_Item.GetItemInfo or GetItemInfo)(itemId)
+  if not q then pendingItems[itemId] = true end
   return q
 end
 MD.GameQuality = GameQuality
@@ -268,7 +341,7 @@ end
 
 -- A reward's tags after the live checks above. Cached until your gear or level changes.
 local tagCache = {}
-function MD:ResetRewardTags() wipe(tagCache) end
+function MD:ResetRewardTags() wipe(tagCache) MD:ResetTiers() end
 function MD.RewardTags(r)
   local id = r[1]
   if id == 0 then return r[5] end -- spell rewards
@@ -304,7 +377,18 @@ function MD:HasQuestTag(chain, wanted)
 end
 
 -- Tier for one chain, for this character, or nil when it isn't a must-do for them.
+-- Cached until the next refresh (MD:Changed): pins, NPC marks, openers and the list all ask.
+local tierCache = {}
+local NO_TIER = {}
+function MD:ResetTiers() wipe(tierCache) end
 function MD:Tier(chain)
+  local cached = tierCache[chain]
+  if cached then return cached ~= NO_TIER and cached or nil end
+  local tier = MD:ComputeTier(chain)
+  tierCache[chain] = tier or NO_TIER
+  return tier
+end
+function MD:ComputeTier(chain)
   local best
   if not MD.HasProfession(chain.skill) then return nil end
   local function consider(key)
@@ -329,7 +413,7 @@ function MD:Tier(chain)
       local tag = raw:gsub("^%s+", "")
       if profession(tag) then -- handled
       elseif EPIC_TAGS[tag] then consider("epic")
-      elseif RARE_TAGS[tag] or tag:find("slot bag") then consider("rare")
+      elseif RARE_TAGS[tag] or tag:find("slot bag") or tag == "bag" then consider("rare")
       elseif FUN_TAGS[tag] then consider("fun") end
     end
     end
@@ -352,7 +436,10 @@ function MD:BestReward(chain)
     -- "Forever item" is just a note, not a reason; the game's quality beats the data's.
     local tagged = RewardTags(r):gsub(",?%s*Forever item", "") ~= ""
     local quality = (r[1] > 0 and GameQuality(r[1])) or r[3]
-    local score = (IsPick(r) and 100 or 0) + (tagged and 10 or 0) + quality - (Unusable(r) and 1000 or 0)
+    -- Your class's armor type is worth more than one quality step (a green leather piece beats
+    -- a blue cloth one for a druid), less than a tag or an upgrade.
+    local score = (IsPick(r) and 100 or 0) + (tagged and 10 or 0) + quality + 3 * ArmorFit(r[1])
+      - (Unusable(r) and 1000 or 0)
     if score > bestScore then best, bestScore = r, score end
   end
   if not best then
@@ -381,7 +468,7 @@ function MD:ShortWhy(chain, tier)
       if PROFESSION_BY_NAME[tag] then return tag:lower() end
     end
   end
-  for _, word in ipairs({ "teaches spell", "attunement", "key", "slot bag", "epic", "class quest", "recipe",
+  for _, word in ipairs({ "teaches spell", "attunement", "key", "slot bag", "bag", "epic", "class quest", "recipe",
                           "use effect", "proc", "rare", "cosmetic", "fun" }) do
     if why:find(word, 1, true) then
       return ({ ["teaches spell"] = "spell", ["slot bag"] = "bag", ["use effect"] = "special",
@@ -461,12 +548,24 @@ end
 local TIMELESS = { ["teaches spell"] = true, ["key"] = true, ["attunement"] = true, ["Onyxia attunement"] = true,
   ["UBRS key"] = true, ["Scholomance key"] = true, ["BRD key"] = true, ["Dire Maul key"] = true, ["Scarlet key"] = true,
   ["Workshop key"] = true, ["Sunken Temple"] = true }
+local BAGS_TIMELESS_UNTIL = 30
 function MD:Timeless(chain)
-  -- Profession quests and rewards stay worth it at any level.
-  if MD:Tier(chain) and MD:Tier(chain).key == "profession" then return true end
+  -- Reads the data's tags, not the game's item info: this runs for every gray chain on each
+  -- refresh, and asking the game about thousands of items makes it fetch them all.
+  -- Profession quests and rewards (for professions you have) stay worth it at any level.
+  if chain.skill ~= 0 and MD.HasProfession(chain.skill) then return true end
+  -- A bag is a permanent slot gain, worth a gray quest until you'd have bigger bags anyway.
+  local bagsMatter = (UnitLevel("player") or 1) < BAGS_TIMELESS_UNTIL
   for _, r in ipairs(chain.rewards) do
-    if IsPick(r) then return true end
-    for raw in RewardTags(r):gmatch("[^,]+") do if TIMELESS[(raw:gsub("^%s+", ""))] then return true end end
+    if not Unusable(r) then
+      if (r[6] or 0) ~= 0 or IsPick(r) then return true end
+      for raw in r[5]:gmatch("[^,]+") do
+        local tag = raw:gsub("^%s+", "")
+        if TIMELESS[tag] then return true end
+        if PROFESSION_BY_NAME[tag] and MD.HasProfession(PROFESSION_BY_NAME[tag]) then return true end
+        if bagsMatter and (tag == "bag" or tag:find("slot bag", 1, true)) then return true end
+      end
+    end
   end
   for raw in chain.questTags:gmatch("[^,]+") do if TIMELESS[(raw:gsub("^%s+", ""))] then return true end end
   return false
@@ -478,8 +577,16 @@ end
 --   nil         nothing to do about it right now
 function MD:Status(chain, allLevels, includeHidden)
   if not includeHidden and MD:IsHidden(chain) then return nil end
-  if not Eligible(chain.final) or Settled(chain.final) or not MD:Tier(chain) then return nil end
-  if MD:CategoryHidden(MD:Tier(chain).key) then return nil end
+  if not Eligible(chain.final) or Settled(chain.final) then return nil end
+  -- Level checks first; the tier (which reads the game's item info) only for chains that pass.
+  local status, step = MD:LevelStatus(chain, allLevels)
+  if not status then return nil end
+  local tier = MD:Tier(chain)
+  if not tier or MD:CategoryHidden(tier.key) then return nil end
+  return status, step
+end
+
+function MD:LevelStatus(chain, allLevels)
   local _, _, nextSteps, active = MD:Progress(chain)
   if #active > 0 then return "active", active[1] end
   -- A chain shows when its next step is at your level now, however high it ends: long chains
@@ -488,12 +595,13 @@ function MD:Status(chain, allLevels, includeHidden)
   local level = UnitLevel("player")
   local final = ns.Q[chain.final]
   if not allLevels and final[LEVEL] <= GrayLevel(level) and not MD:Timeless(chain) then return nil end
-  -- Dungeon and elite chains show as soon as you can pick them up: you collect them (and find
-  -- a group) before you go.
+  -- Dungeon and elite chains show earlier (up to 10 levels above you): you collect them (and
+  -- find a group) before you go. Some old quests list required level 1, so the quest's own level
+  -- still caps it: a level-52 Dire Maul quest isn't for a level 9.
   local group = chain.questTags:find("dungeon: ", 1, true) ~= nil or MD:HasQuestTag(chain, "elite")
   for _, id in ipairs(nextSteps) do
     local q = ns.Q[id]
-    if allLevels or (q[REQ] <= level and (group or q[LEVEL] <= level + 3)) then return "available", id end
+    if allLevels or (q[REQ] <= level and q[LEVEL] <= level + (group and 10 or 3)) then return "available", id end
   end
   return nil
 end
@@ -639,8 +747,26 @@ end
 
 function MD:QuestName(id) return ns.Q[id] and ns.Q[id][NAME] end
 function MD:QuestRow(id) return ns.Q[id] end
+-- Puts a link in the chat box you're typing in, or opens chat with it. Era's chat code lives in
+-- ChatFrameUtil now; the old ChatEdit_* names exist only when Blizzard's deprecation shims load.
+function MD.InsertLink(link)
+  if not link then return end
+  local util = ChatFrameUtil
+  local insert = (util and util.InsertLink) or ChatEdit_InsertLink
+  local open = (util and util.OpenChat) or ChatFrame_OpenChat
+  if not (insert and insert(link)) and open then open(link) end
+end
+
+-- A chat link for a quest (the same yellow [Name] link the quest log makes), or nil if we don't know it.
+function MD:QuestLink(id)
+  local q = ns.Q[id]
+  if not q or not q[NAME] then return nil end
+  return ("|cffffff00|Hquest:%d:%d|h[%s]|h|r"):format(id, q[LEVEL] or 0, q[NAME])
+end
 function MD.Hex(tier) return "|c" .. tier.hex end
-function MD.Rank(tier) return TIER_INDEX[tier.key] end
+-- Openers (quests that unlock several others) rank below every must-do tier.
+MD.OPENER_TIER = { key = "openers", label = "quests that open up others", color = { 0.55, 0.8, 1 }, hex = "ff8cccff" }
+function MD.Rank(tier) return TIER_INDEX[tier.key] or (#MD.TIERS + 1) end
 
 -- Events -----------------------------------------------------------------------------
 
@@ -662,6 +788,7 @@ end
 MD.listeners = {}
 function MD:OnChange(fn) self.listeners[#self.listeners + 1] = fn end
 function MD:Changed()
+  MD:ResetTiers()
   for _, fn in ipairs(self.listeners) do MD.Safe(fn) end
 end
 
@@ -712,7 +839,11 @@ events:SetScript("OnEvent", function(_, event, arg1)
   if event == "GET_ITEM_INFO_RECEIVED" then
     -- Many arrive at once when the list opens: refresh once, a moment later, and only for
     -- items Must Do knows about.
-    if not MD.ready or itemRefreshPending or not (arg1 and MD.rewardItems and MD.rewardItems[arg1]) then return end
+    -- Only items Must Do asked about and was waiting on: anything else (another addon's lookups,
+    -- your bags) would start a refresh loop.
+    if not (arg1 and MD.pendingItems[arg1]) then return end
+    MD.pendingItems[arg1] = nil
+    if not MD.ready or itemRefreshPending then return end
     itemRefreshPending = true
     C_Timer.After(1, function() itemRefreshPending = false MD:Changed() end)
     return

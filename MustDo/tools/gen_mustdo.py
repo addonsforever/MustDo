@@ -100,6 +100,13 @@ def item_info(item_id):
     if g:
         return {"name": g[0], "q": g[1], "cls": None, "sub": None, "inv": None, "slots": 0, "req": g[3], "skill": 0,
                 "use": False, "proc": False, "learn": False}
+    # QuestieDB knows new Forever items' names and classes, not their quality or bag size: quality 1 here,
+    # the game's real quality is applied in the addon; slots None = size unknown.
+    qi = QITEMS.get(str(item_id))
+    if qi:
+        cls, sub = qi.get("cls"), qi.get("sub")
+        return {"name": qi["name"], "q": 1, "cls": cls, "sub": sub, "inv": None, "slots": None, "req": 0,
+                "skill": RECIPE_SKILL.get(sub, 0) if cls == 9 else 0, "use": False, "proc": False, "learn": False}
     return None
 
 # Professions by skill line. Rewards and quests that need one only matter if you have it.
@@ -136,7 +143,8 @@ def item_tags(item_id, info):
     if item_id in ATTUNEMENT_ITEMS: t.append(ATTUNEMENT_ITEMS[item_id])
     if info["q"] >= 4: t.append("epic")
     elif info["q"] == 3: t.append("rare")
-    if info["cls"] == 1 and info["slots"] >= 8: t.append("%d-slot bag" % info["slots"])
+    if info["cls"] == 1 and info["slots"] is None: t.append("bag")  # new Forever bag, size unknown
+    elif info["cls"] == 1 and info["slots"] >= 8: t.append("%d-slot bag" % info["slots"])
     if info["cls"] in (2, 4) and info["use"]: t.append("use effect")
     if info["cls"] in (2, 4) and info["proc"]: t.append("proc")
     if info["cls"] == 15 and (info["use"] or info["learn"]): t.append("fun")
@@ -173,6 +181,18 @@ for item_id, g in GQ.items():
     for c in cands:
         rewards[c].add(int(item_id))
         gq_items.add(int(item_id))
+
+# QuestieDB quest-reward links (all of Forever's new rewards: bags, recipes, gear GearQuest lacks).
+QITEMS = Q.get("items", {})
+RECIPE_SKILL = {1: 165, 2: 197, 3: 202, 4: 164, 5: 185, 6: 171, 7: 129, 8: 333, 9: 356}  # recipe subclass -> skill line
+qdb_gear = set()  # new Forever armor/weapons: kept so the addon can judge them by their in-game quality
+for item_id, qi in QITEMS.items():
+    iid = int(item_id)
+    for q in qi.get("rewards") or []:
+        if str(q) in quests:
+            rewards[int(q)].add(iid)
+    if iid >= 200000 and qi.get("cls") in (2, 4):
+        qdb_gear.add(iid)
 
 def quest_tags(qid):
     t = []
@@ -243,7 +263,7 @@ for qid in sorted(int(x) for x in quests):
         if not info:
             continue
         tags = item_tags(item_id, info)
-        flagged = bool([x for x in tags if x not in INFO_ONLY] or item_id in gq_items)
+        flagged = bool([x for x in tags if x not in INFO_ONLY] or item_id in gq_items or item_id in qdb_gear)
         notable = notable or flagged
         items.append((item_id, info, tags, flagged))
     # Notable rewards first, then by quality, so the addon leads with the interesting one.

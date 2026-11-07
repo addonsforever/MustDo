@@ -5,7 +5,8 @@ local _, ns = ...
 local MD = ns.MD
 
 -- NPC name -> { tier, text } for everyone with a must-do quest for you right now: the giver of
--- your next step, or the NPC to hand a finished quest to. Rebuilt whenever Must Do refreshes.
+-- your next step, the NPC to hand a finished quest to, or the giver of an opener (a quest that
+-- unlocks several others). Rebuilt whenever Must Do refreshes.
 local marks = {}
 
 local function Rebuild()
@@ -31,6 +32,18 @@ local function Rebuild()
           marks[npc] = { tier = tier, text = string.format("Must Do: %s%s - %s (%s)", verb, MD:QuestName(stepId),
             target, MD:ShortWhy(chain, tier)) }
         end
+      end
+    end
+  end
+  -- Openers you can pick up now; a must-do chain from the same NPC takes priority.
+  for id in pairs(ns.openers or {}) do
+    local st = MD:OpenerStatus(id)
+    if st and st.status == "available" then
+      local g = MD:QuestRow(id)[MD.Q_GIVER]
+      local npc = g and g[2] and g[1]
+      if npc and not marks[npc] then
+        marks[npc] = { tier = MD.OPENER_TIER,
+          text = string.format("Must Do: %s - opens %d quests", MD:QuestName(id), st.remaining) }
       end
     end
   end

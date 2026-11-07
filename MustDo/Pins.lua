@@ -19,7 +19,8 @@ local function OnEnter(self)
   for _, entry in ipairs(self.entries) do
     local tier = entry.tier
     GameTooltip:AddLine(string.format("%s: |cffffffff%s|r", entry.giver, entry.quest), 1, 0.82, 0)
-    GameTooltip:AddLine(string.format("leads to %s%s|r", MD.Hex(tier), MD:RewardText(entry.chain)), 1, 1, 1, true)
+    local leads = entry.chain and MD:RewardText(entry.chain) or entry.text
+    GameTooltip:AddLine(string.format("leads to %s%s|r", MD.Hex(tier), leads), 1, 1, 1, true)
   end
   GameTooltip:Show()
 end
@@ -67,8 +68,20 @@ local function Refresh()
       end
     end
   end
+  -- Openers you can pick up now (quests that unlock several others), one marker per alternative.
+  for id in pairs(ns.openers or {}) do
+    local st = MD:OpenerStatus(id)
+    if st and st.status == "available" then
+      local key = "opener:" .. MD:AltKey(id)
+      local g = MD:QuestRow(id)[MD.Q_GIVER]
+      local here = g and g[2] == map
+      if not chosen[key] or (here and not chosen[key].here) then
+        chosen[key] = { stepId = id, here = here, opener = st }
+      end
+    end
+  end
   for _, pick in pairs(chosen) do
-    local tier = MD:Tier(pick.chain)
+    local tier = pick.chain and MD:Tier(pick.chain) or MD.OPENER_TIER
     local g = MD:QuestRow(pick.stepId)[MD.Q_GIVER]
     if g and g[2] then
       local key = g[1] .. g[2]
@@ -77,7 +90,8 @@ local function Refresh()
         spot = { map = g[2], x = g[3] / 100, y = g[4] / 100, entries = {}, best = tier }
         byGiver[key] = spot
       end
-      table.insert(spot.entries, { giver = g[1], quest = MD:QuestName(pick.stepId), chain = pick.chain, tier = tier })
+      table.insert(spot.entries, { giver = g[1], quest = MD:QuestName(pick.stepId), chain = pick.chain, tier = tier,
+        text = pick.opener and string.format("%d more quests", pick.opener.remaining) or nil })
       if MD.Rank(tier) < MD.Rank(spot.best) then spot.best = tier end
     end
   end

@@ -134,7 +134,7 @@ local function OnClick(self, button)
   local link = self.itemId and self.itemId > 0 and ItemLink(self.itemId)
   if not link then return end
   if IsControlKeyDown() and DressUpItemLink then DressUpItemLink(link)
-  elseif IsShiftKeyDown() and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+  elseif IsShiftKeyDown() then MD.InsertLink(link) end
 end
 
 local function NewIcon(parent, size)

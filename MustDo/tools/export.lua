@@ -32,6 +32,15 @@ for id, n in pairs(M.npcs) do
 end
 local objects = {}
 for id, o in pairs(M.objects) do if o[M.ok.name] then objects[tostring(id)] = o[M.ok.name] end end
+-- Items that are quest rewards: QuestieDB records which quests give them (cmangos has no Forever items).
+local ik = M.ik
+local items = {}
+for id, it in pairs(M.items) do
+  local rq = it[ik.questRewards]
+  if rq and #rq > 0 and it[ik.name] then
+    items[tostring(id)] = { name = it[ik.name], cls = it[ik.class], sub = it[ik.subClass], rewards = rq }
+  end
+end
 local zones = {}
 for id, name in pairs(M.zoneName) do zones[tostring(id)] = name end
-io.open("mustdo/questie.json", "w"):write(enc({ quests = quests, npcs = npcs, objects = objects, zones = zones }))
+io.open("mustdo/questie.json", "w"):write(enc({ quests = quests, npcs = npcs, objects = objects, zones = zones, items = items }))
